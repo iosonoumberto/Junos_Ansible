@@ -1,0 +1,68 @@
+---
+- name: Sanity check attempt using Ansible
+  hosts: all
+  connection: local
+  gather_facts: no
+  roles:
+  - Juniper.junos
+  vars:
+    ansible_python_interpreter: "/usr/bin/python2.7"
+  tasks:
+###DELETE AND CREATE NEW FILE
+    - name: Ansible create file if it doesn't exist example
+      file:
+        path: "{{ inventory_hostname }}_bgp_report.txt"
+        state: absent
+    - name: Ansible create file if it doesn't exist example
+      file:
+        path: "{{ inventory_hostname }}_bgp_report.txt"
+        state: touch
+    - name: remove host build temp directory
+      file: 
+        path: "{{playbook_dir}}/tmp"
+        state: absent
+    - name: create host build temp directory
+      file:
+        path: "{{playbook_dir}}/tmp"
+        state: directory
+###BGP TOTAL SESSIONS
+    - name: Get BGP summary info and saves it into a file
+      juniper_junos_rpc:
+        rpcs: "get-bgp-summary-information"
+        host: "{{ inventory_hostname }}"
+        user: root
+        passwd: Embe1mpls
+        formats: xml
+        dest: "{{playbook_dir}}/tmp/{{ inventory_hostname }}_bgp.txt"
+    - name: Compute total sessions
+      xml:
+        path: "{{playbook_dir}}/tmp/{{ inventory_hostname }}_bgp.txt"
+        xpath: /bgp-information/bgp-peer/peer-state
+        count: yes
+      register: response
+    - name: Update report
+      lineinfile:
+        path: "{{ inventory_hostname }}_bgp_report.txt"
+        line: "BGP TOTAL SESSIONS:{{ response.count }}"
+###BGP ESTABLISHED SESSIONS
+    - name: Compute established sessions
+      xml:
+        path: "{{playbook_dir}}/tmp/{{ inventory_hostname }}_bgp.txt"
+        xpath: /bgp-information/bgp-peer/peer-state[text()="Established"]
+        count: yes
+      register: response
+    - name: Update report
+      lineinfile:
+        path: "{{ inventory_hostname }}_bgp_report.txt"
+        line: "BGP ESTABLISHED SESSIONS:{{ response.count }}"
+###BGP NON ESTABLISHED SESSIONS
+    - name: Compute Non Established sessions
+      xml:
+        path: "{{playbook_dir}}/tmp/{{ inventory_hostname }}_bgp.txt"
+        xpath: /bgp-information/bgp-peer/peer-state[text()!="Established"]/../peer-address
+        content: text
+      register: response
+    - name: Update report
+      lineinfile:
+        path: "{{ inventory_hostname }}_bgp_report.txt"
+        line: "BGP NON ESTABLISHED SESSIONS:\n{{ response.matches | to_nice_yaml }}"
